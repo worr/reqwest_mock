@@ -1,5 +1,7 @@
 extern crate reqwest;
 extern crate serde;
+extern crate serde_json;
+extern crate serde_urlencoded;
 
 use reqwest::{Body, RedirectPolicy, Response, IntoUrl, Method};
 use reqwest::header::{Header, Headers, HeaderFormat};
@@ -10,21 +12,34 @@ use std::time::Duration;
 pub type Result<T> = ::std::result::Result<T, reqwest::Error>;
 
 /// A client providing the same interface as the reqwest::Client struct.
+// TODO: Consider where we want to put `new()` as this will limit how flexible
+// users of the library will be...
 pub trait Client: Sized {
     type ReqBuilder: RequestBuilder;
 
-    /// Constructs a new `Client`.
-    fn new() -> Result<Self>;
     fn gzip(&mut self, enable: bool);
     fn redirect(&mut self, policy: RedirectPolicy);
     fn timeout(&mut self, timeout: Duration);
-    fn get<U: IntoUrl>(&self, url: U) -> Self::ReqBuilder;
-    fn post<U: IntoUrl>(&self, url: U) -> Self::ReqBuilder;
-    fn put<U: IntoUrl>(&self, url: U) -> Self::ReqBuilder;
-    fn patch<U: IntoUrl>(&self, url: U) -> Self::ReqBuilder;
-    fn delete<U: IntoUrl>(&self, url: U) -> Self::ReqBuilder;
-    fn head<U: IntoUrl>(&self, url: U) -> Self::ReqBuilder;
     fn request<U: IntoUrl>(&self, method: Method, url: U) -> Self::ReqBuilder;
+
+    fn get<U: IntoUrl>(&self, url: U) -> Self::ReqBuilder {
+        self.request(Method::Get, url)
+    }
+    fn post<U: IntoUrl>(&self, url: U) -> Self::ReqBuilder {
+        self.request(Method::Post, url)
+    }
+    fn put<U: IntoUrl>(&self, url: U) -> Self::ReqBuilder {
+        self.request(Method::Put, url)
+    }
+    fn patch<U: IntoUrl>(&self, url: U) -> Self::ReqBuilder {
+        self.request(Method::Patch, url)
+    }
+    fn delete<U: IntoUrl>(&self, url: U) -> Self::ReqBuilder {
+        self.request(Method::Delete, url)
+    }
+    fn head<U: IntoUrl>(&self, url: U) -> Self::ReqBuilder {
+        self.request(Method::Head, url)
+    }
 }
 
 pub trait RequestBuilder {
@@ -40,9 +55,11 @@ pub trait RequestBuilder {
 impl Client for reqwest::Client {
     type ReqBuilder = reqwest::RequestBuilder;
 
+    /*
     fn new() -> Result<Self> {
         reqwest::Client::new()
     }
+    */
 
     fn gzip(&mut self, enable: bool) {
         self.gzip(enable)
@@ -99,6 +116,8 @@ impl RequestBuilder for reqwest::RequestBuilder {
         self.send()
     }
 }
+
+pub mod replay;
 
 #[cfg(test)]
 mod tests {
