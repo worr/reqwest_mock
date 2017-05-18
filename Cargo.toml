@@ -1,0 +1,8 @@
+[package]
+name = "reqwest_mock"
+version = "0.1.0"
+authors = ["Leo Schwarz <mail@leoschwarz.com>"]
+
+[dependencies]
+reqwest = "0.6.1"
+serde = "1.0.6"
