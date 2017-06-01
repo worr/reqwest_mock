@@ -1,12 +1,16 @@
 extern crate reqwest;
 extern crate serde;
+#[macro_use]
+extern crate serde_derive;
 extern crate serde_json;
 extern crate serde_urlencoded;
 
-use reqwest::{Body, RedirectPolicy, Response, IntoUrl, Method};
+use reqwest::{Response, IntoUrl, Method};
 use reqwest::header::{Header, Headers, HeaderFormat};
 use serde::ser::Serialize;
 use std::time::Duration;
+use std::fs::File;
+use std::io::{Cursor, Read};
 
 // TODO
 pub type Result<T> = ::std::result::Result<T, reqwest::Error>;
@@ -65,7 +69,7 @@ impl Client for reqwest::Client {
         self.gzip(enable)
     }
     fn redirect(&mut self, policy: RedirectPolicy) {
-        self.redirect(policy)
+        self.redirect(policy.to_reqwest_policy())
     }
     fn timeout(&mut self, timeout: Duration) {
         self.timeout(timeout)
@@ -104,7 +108,7 @@ impl RequestBuilder for reqwest::RequestBuilder {
         self.basic_auth(username, password)
     }
     fn body<T: Into<Body>>(self, body: T) -> Self {
-        self.body(body)
+        self.body(reqwest::Body::from(body.into()))
     }
     fn form<T: Serialize>(self, form: &T) -> Self {
         self.form(form)
@@ -116,6 +120,102 @@ impl RequestBuilder for reqwest::RequestBuilder {
         self.send()
     }
 }
+
+/// Specifies how to handle redirects.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum RedirectPolicy {
+    Limit(usize),
+    None
+}
+
+impl RedirectPolicy {
+    /// Allow up to n redirects.
+    pub fn limited(n: usize) -> Self {
+        RedirectPolicy::Limit(n)
+    }
+
+    /// Allow no redirects.
+    pub fn none() -> Self {
+        RedirectPolicy::None
+    }
+
+    /// Convert to `reqwest::RedirectPolicy`.
+    fn to_reqwest_policy(&self) -> reqwest::RedirectPolicy {
+        use RedirectPolicy::*;
+        match *self {
+            Limit(n) => reqwest::RedirectPolicy::limited(n),
+            None => reqwest::RedirectPolicy::none(),
+        }
+    }
+}
+
+impl From<RedirectPolicy> for reqwest::RedirectPolicy {
+    fn from(r: RedirectPolicy) -> Self {
+        r.to_reqwest_policy()
+    }
+}
+
+// TODO: wrap Headers to collect output, or explore options to dump `Headers` to text which then
+// can be compared to previous serializations.
+
+impl Default for RedirectPolicy {
+    fn default() -> Self {
+        Self::limited(10)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Body {
+    data: Vec<u8>,
+}
+
+impl From<Vec<u8>> for Body {
+    fn from(f: Vec<u8>) -> Self {
+        Body {
+            data: f
+        }
+    }
+}
+
+impl From<String> for Body {
+    fn from(f: String) -> Self {
+        Body {
+            data: f.bytes().collect()
+        }
+    }
+}
+
+impl<'a> From<&'a [u8]> for Body {
+    fn from(f: &'a [u8]) -> Self {
+        Body {
+            data: f.to_vec()
+        }
+    }
+}
+
+impl<'a> From<&'a str> for Body {
+    fn from(f: &'a str) -> Self {
+        Body {
+            data: f.bytes().collect()
+        }
+    }
+}
+
+impl From<Body> for ::reqwest::Body {
+    fn from(b: Body) -> Self {
+        reqwest::Body::new(Cursor::new(b.data.clone()))
+    }
+}
+
+/* TODO
+impl From<File> for Body {
+    fn from(f: File) -> Self {
+        Body {
+            data: f.bytes().collect()
+        }
+    }
+}
+*/
 
 pub mod replay;
 
