@@ -76,7 +76,19 @@ impl RequestData {
         }
     }
 
-    fn serialize(&self) -> String {
+    fn deserialize(source: &str) -> Result<Self, serde_json::Error> {
+        let data: RequestDataSerializable = serde_json::from_str(source)?;
+        Ok(RequestData {
+            gzip: data.gzip,
+            redirect: data.redirect,
+            timeout: data.timeout,
+            basic_auth: data.basic_auth,
+            headers: deserialize_headers(&data.headers),
+            body: data.body
+        })
+    }
+
+    fn serialize(&self) -> Result<String, serde_json::Error> {
         let data = RequestDataSerializable {
             gzip: self.gzip,
             redirect: self.redirect.clone(),
@@ -85,7 +97,8 @@ impl RequestData {
             headers: serialize_headers(&self.headers),
             body: self.body.clone()
         };
-        "abc".to_string()
+
+        serde_json::to_string(&data)
     }
 }
 
@@ -168,7 +181,7 @@ impl RequestBuilder for ReplayRequestBuilder {
         self.header(ContentType::json()).body(body)
     }
 
-    fn send(self) -> Result<Response> {
+    fn send(self) -> Result<Response, reqwest::Error> {
         unimplemented!()
     }
 }

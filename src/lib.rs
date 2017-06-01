@@ -13,7 +13,7 @@ use std::fs::File;
 use std::io::{Cursor, Read};
 
 // TODO
-pub type Result<T> = ::std::result::Result<T, reqwest::Error>;
+//pub type Result<T> = ::std::result::Result<T, reqwest::Error>;
 
 /// A client providing the same interface as the reqwest::Client struct.
 // TODO: Consider where we want to put `new()` as this will limit how flexible
@@ -53,7 +53,7 @@ pub trait RequestBuilder {
     fn body<T: Into<Body>>(self, body: T) -> Self;
     fn form<T: Serialize>(self, form: &T) -> Self;
     fn json<T: Serialize>(self, json: &T) -> Self;
-    fn send(self) -> Result<Response>;
+    fn send(self) -> Result<Response, reqwest::Error>;
 }
 
 impl Client for reqwest::Client {
@@ -116,7 +116,7 @@ impl RequestBuilder for reqwest::RequestBuilder {
     fn json<T: Serialize>(self, json: &T) -> Self {
         self.json(json)
     }
-    fn send(self) -> Result<Response> {
+    fn send(self) -> Result<Response, reqwest::Error> {
         self.send()
     }
 }
@@ -154,9 +154,6 @@ impl From<RedirectPolicy> for reqwest::RedirectPolicy {
         r.to_reqwest_policy()
     }
 }
-
-// TODO: wrap Headers to collect output, or explore options to dump `Headers` to text which then
-// can be compared to previous serializations.
 
 impl Default for RedirectPolicy {
     fn default() -> Self {
