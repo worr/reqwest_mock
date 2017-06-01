@@ -87,3 +87,34 @@ impl Default for RequestData {
         }
     }
 }
+
+impl RequestData {
+    pub fn new_for_client(cd: &ClientData) -> Self {
+        let mut data = Self::default();
+        data.gzip = cd.gzip;
+        data.redirect = cd.redirect.clone();
+        data.timeout = cd.timeout.clone();
+        data
+    }
+}
+
+/// This struct is held by the Client and stores the current config at the beginnig of a request.
+/// Generally this is mostly a conveniency type and we will always store all the relevant data
+/// in each `RequestData` instance anyway.
+#[derive(Debug)]
+pub struct ClientData {
+    pub gzip: bool,
+    pub redirect: RedirectPolicy,
+    pub timeout: Option<Duration>,
+}
+
+impl Default for ClientData {
+    fn default() -> Self {
+        ClientData {
+            gzip: true,
+            redirect: RedirectPolicy::default(),
+            timeout: None
+        }
+    }
+}
+

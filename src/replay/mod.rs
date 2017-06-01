@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 mod data;
 
-use self::data::{BasicAuth, RequestData};
+use self::data::{BasicAuth, ClientData, RequestData};
 
 #[derive(Debug)]
 enum ClientMode {
@@ -35,39 +35,34 @@ pub enum HandleChangedRequest {
     Panic,
 }
 
-struct ReplayClientInner {
+struct InnerClient {
     mode: ClientMode,
-
-    /// Here we record all request data specified by the API user regardless if we are recording or
-    /// not, so in the case of a replay with changed request data we are capable of taking adequate
-    /// measures.
-    request_data: Rc<RefCell<RequestData>>,
 }
 
 pub struct ReplayClient {
-    inner: Rc<RefCell<ReplayClientInner>>,
-    request_data: Rc<RefCell<RequestData>>
+    inner: Rc<RefCell<InnerClient>>,
+    data: ClientData,
 }
 
 impl Client for ReplayClient {
     type ReqBuilder = ReplayRequestBuilder;
 
     fn gzip(&mut self, enable: bool) {
-        self.request_data.borrow_mut().gzip = enable;
+        self.data.gzip = enable;
     }
 
     fn redirect(&mut self, policy: RedirectPolicy) {
-        self.request_data.borrow_mut().redirect = policy;
+        self.data.redirect = policy;
     }
 
     fn timeout(&mut self, timeout: Duration) {
-        self.request_data.borrow_mut().timeout = Some(timeout);
+        self.data.timeout = Some(timeout);
     }
 
     fn request<U: IntoUrl>(&self, method: Method, url: U) -> Self::ReqBuilder {
         ReplayRequestBuilder {
-            iclient: self.inner.clone(),
-            data: Rc::new(RefCell::new(RequestData::default())),
+            data: RequestData::new_for_client(&self.data),
+            inner: self.inner.clone(),
             method: method,
             url: url.into_url().unwrap(),
         }
@@ -75,33 +70,33 @@ impl Client for ReplayClient {
 }
 
 pub struct ReplayRequestBuilder {
-    iclient: Rc<RefCell<ReplayClientInner>>,
-    data: Rc<RefCell<RequestData>>,
+    inner: Rc<RefCell<InnerClient>>,
     method: Method,
     url: Url,
+    data: RequestData,
 }
 
 impl RequestBuilder for ReplayRequestBuilder {
-    fn header<H: Header + HeaderFormat>(self, header: H) -> Self {
-        self.data.borrow_mut().headers.set(header);
+    fn header<H: Header + HeaderFormat>(mut self, header: H) -> Self {
+        self.data.headers.set(header);
         self
     }
 
-    fn headers(self, headers: Headers) -> Self {
-        self.data.borrow_mut().headers.extend(headers.iter());
+    fn headers(mut self, headers: Headers) -> Self {
+        self.data.headers.extend(headers.iter());
         self
     }
 
-    fn basic_auth(self, username: String, password: Option<String>) -> Self {
-        self.data.borrow_mut().basic_auth = Some(BasicAuth {
+    fn basic_auth(mut self, username: String, password: Option<String>) -> Self {
+        self.data.basic_auth = Some(BasicAuth {
                                                      username: username,
                                                      password: password,
                                                  });
         self
     }
 
-    fn body<T: Into<Body>>(self, body: T) -> Self {
-        self.data.borrow_mut().body = Some(body.into().data);
+    fn body<T: Into<Body>>(mut self, body: T) -> Self {
+        self.data.body = Some(body.into().data);
         self
     }
 
@@ -116,11 +111,11 @@ impl RequestBuilder for ReplayRequestBuilder {
     }
 
     fn send(self) -> Result<Response, reqwest::Error> {
-        self.iclient.borrow_mut().send_request(&self)
+        self.inner.borrow_mut().send_request(&self)
     }
 }
 
-impl ReplayClientInner {
+impl InnerClient {
     fn send_request(&mut self, request: &ReplayRequestBuilder) -> Result<Response, reqwest::Error> {
         match self.mode {
             ClientMode::Record => {
