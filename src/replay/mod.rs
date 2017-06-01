@@ -6,6 +6,11 @@ use std::collections::HashMap;
 use std::iter::FromIterator;
 use std::rc::Rc;
 
+mod data;
+
+use self::data::{BasicAuth, RequestData};
+
+#[derive(Debug)]
 enum ClientMode {
     Record,
     Replay,
@@ -30,91 +35,18 @@ pub enum HandleChangedRequest {
     Panic,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct RequestDataSerializable {
-    gzip: bool,
-    redirect: RedirectPolicy,
-    timeout: Option<Duration>,
-    basic_auth: Option<BasicAuth>,
-    headers: HashMap<String, String>,
-    body: Option<Vec<u8>>,
-}
-
-fn serialize_headers(headers: &Headers) -> HashMap<String, String> {
-    let tuples_iter = headers.iter().map(|hv| (hv.name().to_string(), hv.value_string()));
-    HashMap::from_iter(tuples_iter)
-}
-
-fn deserialize_headers(source: &HashMap<String, String>) -> Headers {
-    let mut headers = Headers::new();
-    for (name, value) in source.iter() {
-        headers.append_raw(name.clone(), value.as_bytes().to_vec())
-    }
-    headers
-}
-
-#[derive(Debug)]
-struct RequestData {
-    /// apparently this is only about automatic decompression
-    gzip: bool,
-    redirect: RedirectPolicy,
-    timeout: Option<Duration>,
-    basic_auth: Option<BasicAuth>,
-    headers: Headers,
-    body: Option<Vec<u8>>,
-}
-
-impl RequestData {
-    fn default() -> Self {
-        RequestData {
-            gzip: true,
-            redirect: RedirectPolicy::default(),
-            timeout: None,
-            basic_auth: None,
-            headers: Headers::new(),
-            body: None,
-        }
-    }
-
-    fn deserialize(source: &str) -> Result<Self, serde_json::Error> {
-        let data: RequestDataSerializable = serde_json::from_str(source)?;
-        Ok(RequestData {
-            gzip: data.gzip,
-            redirect: data.redirect,
-            timeout: data.timeout,
-            basic_auth: data.basic_auth,
-            headers: deserialize_headers(&data.headers),
-            body: data.body
-        })
-    }
-
-    fn serialize(&self) -> Result<String, serde_json::Error> {
-        let data = RequestDataSerializable {
-            gzip: self.gzip,
-            redirect: self.redirect.clone(),
-            timeout: self.timeout,
-            basic_auth: self.basic_auth.clone(),
-            headers: serialize_headers(&self.headers),
-            body: self.body.clone()
-        };
-
-        serde_json::to_string(&data)
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct BasicAuth {
-    username: String,
-    password: Option<String>,
-}
-
-pub struct ReplayClient {
+struct ReplayClientInner {
     mode: ClientMode,
 
     /// Here we record all request data specified by the API user regardless if we are recording or
     /// not, so in the case of a replay with changed request data we are capable of taking adequate
     /// measures.
     request_data: Rc<RefCell<RequestData>>,
+}
+
+pub struct ReplayClient {
+    inner: Rc<RefCell<ReplayClientInner>>,
+    request_data: Rc<RefCell<RequestData>>
 }
 
 impl Client for ReplayClient {
@@ -134,6 +66,7 @@ impl Client for ReplayClient {
 
     fn request<U: IntoUrl>(&self, method: Method, url: U) -> Self::ReqBuilder {
         ReplayRequestBuilder {
+            iclient: self.inner.clone(),
             data: Rc::new(RefCell::new(RequestData::default())),
             method: method,
             url: url.into_url().unwrap(),
@@ -142,6 +75,7 @@ impl Client for ReplayClient {
 }
 
 pub struct ReplayRequestBuilder {
+    iclient: Rc<RefCell<ReplayClientInner>>,
     data: Rc<RefCell<RequestData>>,
     method: Method,
     url: Url,
@@ -182,6 +116,22 @@ impl RequestBuilder for ReplayRequestBuilder {
     }
 
     fn send(self) -> Result<Response, reqwest::Error> {
-        unimplemented!()
+        self.iclient.borrow_mut().send_request(&self)
     }
 }
+
+impl ReplayClientInner {
+    fn send_request(&mut self, request: &ReplayRequestBuilder) -> Result<Response, reqwest::Error> {
+        match self.mode {
+            ClientMode::Record => {
+                // TODO
+                unimplemented!()
+            },
+            ClientMode::Replay => {
+                // TODO
+                unimplemented!()
+            },
+        }
+    }
+}
+
