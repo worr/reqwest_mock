@@ -1,9 +1,9 @@
-use reqwest::header::Headers;
 use serde::de::{Deserialize, Deserializer};
 use serde::ser::{Serialize, Serializer};
 use std::collections::HashMap;
 use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
+use std::str::FromStr;
 use std::time::Duration;
 
 use super::RedirectPolicy;
@@ -14,75 +14,140 @@ pub struct BasicAuth {
     pub password: Option<String>,
 }
 
-fn serialize_headers(headers: &Headers) -> HashMap<String, String> {
-    let tuples_iter = headers.iter().map(|hv| (hv.name().to_string(), hv.value_string()));
-    HashMap::from_iter(tuples_iter)
-}
-
-fn deserialize_headers(source: &HashMap<String, String>) -> Headers {
-    let mut headers = Headers::new();
-    for (name, value) in source.iter() {
-        headers.append_raw(name.clone(), value.as_bytes().to_vec())
-    }
-    headers
-}
-
 #[derive(Debug)]
-pub struct HeadersData {
-    headers: Headers,
+pub struct Headers {
+    headers: ::reqwest::header::Headers,
 }
 
-impl Serialize for HeadersData {
+impl Serialize for Headers {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where S: Serializer
     {
-        serialize_headers(&self.headers).serialize(serializer)
+        let tuples_iter = self.headers.iter().map(|hv| (hv.name().to_string(), hv.value_string()));
+        HashMap::<String, String>::from_iter(tuples_iter).serialize(serializer)
     }
 }
 
-impl<'de> Deserialize<'de> for HeadersData {
+impl<'de> Deserialize<'de> for Headers {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
         where D: Deserializer<'de>
     {
-        let map = HashMap::deserialize(deserializer)?;
-        Ok(HeadersData {
-            headers: deserialize_headers(&map)
+        let map = HashMap::<String, String>::deserialize(deserializer)?;
+
+        let mut headers = ::reqwest::header::Headers::new();
+        for (name, value) in map.iter() {
+            headers.append_raw(name.clone(), value.as_bytes().to_vec())
+        }
+
+        Ok(Headers {
+            headers: headers
         })
     }
 }
 
-impl Deref for HeadersData {
-    type Target = Headers;
+impl Deref for Headers {
+    type Target = ::reqwest::header::Headers;
 
     fn deref(&self) -> &Self::Target {
         &self.headers
     }
 }
 
-impl DerefMut for HeadersData {
+impl DerefMut for Headers {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.headers
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct Method {
+    method: ::reqwest::Method
+}
+
+impl Serialize for Method {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where S: Serializer
+    {
+        self.method.as_ref().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Method {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where D: Deserializer<'de>
+    {
+        use serde::de::Error;
+        let s = String::deserialize(deserializer)?;
+        Ok(Method {
+            method: ::reqwest::Method::from_str(s.as_ref()).map_err(|e| D::Error::custom(e))?
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Url {
+    url: ::reqwest::Url
+}
+
+impl Serialize for Url {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where S: Serializer
+    {
+        self.url.as_str().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Url {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where D: Deserializer<'de>
+    {
+        use serde::de::Error;
+        let s = String::deserialize(deserializer)?;
+        Ok(Url {
+            url: ::reqwest::Url::parse(s.as_ref()).map_err(|e| D::Error::custom(e))?
+        })
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RequestTarget {
+    url: Url,
+    method: Method,
+}
+
+impl RequestTarget {
+    /// Accessor to mutate the wrapped `reqwest::Method`.
+    pub fn method(&mut self) -> &mut ::reqwest::Method {
+        &mut self.method.method
+    }
+
+    /// Accessor to mutate the wrapped `reqwest::Url`.
+    pub fn url(&mut self) -> &mut ::reqwest::Url {
+        &mut self.url.url
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RequestData {
+    pub target: Option<RequestTarget>,
+
     pub gzip: bool,
     pub redirect: RedirectPolicy,
     pub timeout: Option<Duration>,
     pub basic_auth: Option<BasicAuth>,
-    pub headers: HeadersData,
+    pub headers: Headers,
     pub body: Option<Vec<u8>>,
 }
 
 impl Default for RequestData {
     fn default() -> Self {
         RequestData {
+            target: None,
             gzip: true,
             redirect: RedirectPolicy::default(),
             timeout: None,
             basic_auth: None,
-            headers: HeadersData { headers: Headers::new() },
+            headers: Headers { headers: ::reqwest::header::Headers::new() },
             body: None,
         }
     }
