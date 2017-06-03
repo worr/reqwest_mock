@@ -7,8 +7,10 @@ use std::iter::FromIterator;
 use std::rc::Rc;
 
 mod data;
+use self::data::{BasicAuth, ClientData, ResponseData, RequestData};
 
-use self::data::{BasicAuth, ClientData, RequestData};
+mod storage;
+use self::storage::{ReplayData, ReplayFile};
 
 #[derive(Debug)]
 enum ClientMode {
@@ -37,6 +39,7 @@ pub enum HandleChangedRequest {
 
 struct InnerClient {
     mode: ClientMode,
+    file: ReplayFile,
 }
 
 pub struct ReplayClient {
@@ -89,9 +92,9 @@ impl RequestBuilder for ReplayRequestBuilder {
 
     fn basic_auth(mut self, username: String, password: Option<String>) -> Self {
         self.data.basic_auth = Some(BasicAuth {
-                                                     username: username,
-                                                     password: password,
-                                                 });
+                                        username: username,
+                                        password: password,
+                                    });
         self
     }
 
@@ -111,22 +114,65 @@ impl RequestBuilder for ReplayRequestBuilder {
     }
 
     fn send(self) -> Result<Response, reqwest::Error> {
-        self.inner.borrow_mut().send_request(&self)
+        self.inner.borrow_mut().send_request(self.data)
     }
 }
 
 impl InnerClient {
-    fn send_request(&mut self, request: &ReplayRequestBuilder) -> Result<Response, reqwest::Error> {
+    fn send_request(&mut self, request_data: RequestData) -> Result<Response, reqwest::Error> {
         match self.mode {
             ClientMode::Record => {
-                // TODO
-                unimplemented!()
-            },
+                // Perform the request.
+                let mut client = reqwest::Client::new()?;
+                client.gzip(request_data.gzip);
+                client.redirect(request_data.redirect.to_reqwest_policy());
+                if let Some(timeout) = request_data.timeout {
+                    client.timeout(timeout);
+                }
+
+                let mut target = request_data.target.clone().unwrap();
+                let mut req = client
+                    .request(target.method().clone(), target.url().clone())
+                    .headers(request_data.headers.to_reqwest_headers());
+                if let Some(auth) = request_data.basic_auth.clone() {
+                    req = req.basic_auth(auth.username, auth.password);
+                }
+                if let Some(body) = request_data.body.clone() {
+                    req = req.body(body);
+                }
+
+                let mut response = req.send()?;
+
+                // Generate the replay_data to be stored in the file.
+                let mut response_body = Vec::<u8>::new();
+                // TODO: handle error
+                response.read_to_end(&mut response_body);
+                let response_data = ResponseData::new(response.url(),
+                                                      response.status(),
+                                                      response.headers(),
+                                                      response_body);
+                let replay_data = ReplayData {
+                    request: request_data,
+                    response: response_data,
+                };
+
+                // Write to the file.
+                // TODO: handle error
+                self.file.write(replay_data);
+
+                // Return the response.
+                Ok(response)
+            }
             ClientMode::Replay => {
+                // Check if we have recorded the equivalent RequestData before.
+                // If yes, we will load the serialized Response.
+                // If not, we will actually perform the request, store the Response, and then
+                //   return it.
+
+
                 // TODO
                 unimplemented!()
-            },
+            }
         }
     }
 }
-

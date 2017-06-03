@@ -14,9 +14,15 @@ pub struct BasicAuth {
     pub password: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Headers {
     headers: ::reqwest::header::Headers,
+}
+
+impl Headers {
+    pub fn to_reqwest_headers(&self) -> ::reqwest::header::Headers {
+        self.headers.clone()
+    }
 }
 
 impl Serialize for Headers {
@@ -59,57 +65,70 @@ impl DerefMut for Headers {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Method {
-    method: ::reqwest::Method
-}
 
-impl Serialize for Method {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where S: Serializer
-    {
-        self.method.as_ref().serialize(serializer)
+macro_rules! wrap_as_serde_str_type {
+    (
+        $name:ident,
+        $wrapped:ty
+    ) => {
+        #[derive(Clone, Debug)]
+        pub struct $name {
+            pub value: $wrapped
+        }
+
+        impl Serialize for $name {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+                where S: Serializer
+            {
+                self.value.as_ref().serialize(serializer)
+            }
+        }
+
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+                where D: Deserializer<'de>
+            {
+                use serde::de::Error;
+                let s = String::deserialize(deserializer)?;
+                Ok($name {
+                    value: s.parse().map_err(|e| D::Error::custom(e))?
+                })
+            }
+        }
     }
 }
 
-impl<'de> Deserialize<'de> for Method {
+wrap_as_serde_str_type!(Url, ::reqwest::Url);
+wrap_as_serde_str_type!(Method, ::reqwest::Method);
+// TODO when available
+//wrap_as_serde_str_type!(HttpVersion, ::reqwest::HttpVersion);
+
+#[derive(Clone, Debug)]
+pub struct StatusCode {
+    pub value: ::reqwest::StatusCode
+}
+
+impl Serialize for StatusCode {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where S: Serializer
+    {
+        self.value.to_u16().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for StatusCode {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
         where D: Deserializer<'de>
     {
         use serde::de::Error;
-        let s = String::deserialize(deserializer)?;
-        Ok(Method {
-            method: ::reqwest::Method::from_str(s.as_ref()).map_err(|e| D::Error::custom(e))?
+        let val = u16::deserialize(deserializer)?;
+        Ok(StatusCode {
+            value: ::reqwest::StatusCode::from_u16(val)
         })
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Url {
-    url: ::reqwest::Url
-}
-
-impl Serialize for Url {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where S: Serializer
-    {
-        self.url.as_str().serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for Url {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where D: Deserializer<'de>
-    {
-        use serde::de::Error;
-        let s = String::deserialize(deserializer)?;
-        Ok(Url {
-            url: ::reqwest::Url::parse(s.as_ref()).map_err(|e| D::Error::custom(e))?
-        })
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RequestTarget {
     url: Url,
     method: Method,
@@ -118,16 +137,16 @@ pub struct RequestTarget {
 impl RequestTarget {
     /// Accessor to mutate the wrapped `reqwest::Method`.
     pub fn method(&mut self) -> &mut ::reqwest::Method {
-        &mut self.method.method
+        &mut self.method.value
     }
 
     /// Accessor to mutate the wrapped `reqwest::Url`.
     pub fn url(&mut self) -> &mut ::reqwest::Url {
-        &mut self.url.url
+        &mut self.url.value
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RequestData {
     pub target: Option<RequestTarget>,
 
@@ -160,6 +179,33 @@ impl RequestData {
         data.redirect = cd.redirect.clone();
         data.timeout = cd.timeout.clone();
         data
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ResponseData {
+    /// The final URL of this request.
+    pub url: Url,
+
+    pub status: StatusCode,
+    pub headers: Headers,
+    // TODO
+    //    version: HttpVersion,
+    pub body: Vec<u8>
+}
+
+impl ResponseData {
+    pub fn new(url: &::reqwest::Url,
+               status: &::reqwest::StatusCode,
+               headers: &::reqwest::header::Headers,
+               body: Vec<u8>) -> Self
+    {
+        ResponseData {
+            url: Url { value: url.clone() },
+            status: StatusCode { value: status.clone() },
+            headers: Headers { headers: headers.clone() },
+            body: body
+        }
     }
 }
 
