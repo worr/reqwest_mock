@@ -12,18 +12,16 @@ use std::time::Duration;
 use std::fs::File;
 use std::io::{Cursor, Read};
 
-// TODO
-//pub type Result<T> = ::std::result::Result<T, reqwest::Error>;
-
 /// A client providing the same interface as the reqwest::Client struct.
-// TODO: Consider where we want to put `new()` as this will limit how flexible
-// users of the library will be...
 pub trait Client: Sized {
     type ReqBuilder: RequestBuilder;
 
     fn gzip(&mut self, enable: bool);
+
     fn redirect(&mut self, policy: RedirectPolicy);
+    
     fn timeout(&mut self, timeout: Duration);
+    
     fn request<U: IntoUrl>(&self, method: Method, url: U) -> Self::ReqBuilder;
 
     fn get<U: IntoUrl>(&self, url: U) -> Self::ReqBuilder {
@@ -55,6 +53,11 @@ pub trait RequestBuilder {
     fn json<T: Serialize>(self, json: &T) -> Self;
     fn send(self) -> Result<Response, reqwest::Error>;
 }
+
+/*
+TODO: It's not possible to implement methods with the same name as a method which already exists
+    on the struct.
+    This is a problem we might have to solve using a new type, which is a bit ugly.
 
 impl Client for reqwest::Client {
     type ReqBuilder = reqwest::RequestBuilder;
@@ -120,6 +123,7 @@ impl RequestBuilder for reqwest::RequestBuilder {
         self.send()
     }
 }
+*/
 
 /// Specifies how to handle redirects.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

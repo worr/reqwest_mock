@@ -100,8 +100,7 @@ macro_rules! wrap_as_serde_str_type {
 
 wrap_as_serde_str_type!(Url, ::reqwest::Url);
 wrap_as_serde_str_type!(Method, ::reqwest::Method);
-// TODO when available
-//wrap_as_serde_str_type!(HttpVersion, ::reqwest::HttpVersion);
+wrap_as_serde_str_type!(HttpVersion, ::reqwest::HttpVersion);
 
 #[derive(Clone, Debug)]
 pub struct StatusCode {
@@ -189,8 +188,7 @@ pub struct ResponseData {
 
     pub status: StatusCode,
     pub headers: Headers,
-    // TODO
-    //    version: HttpVersion,
+    pub version: HttpVersion,
     pub body: Vec<u8>
 }
 
