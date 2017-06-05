@@ -5,7 +5,8 @@ authors = ["Leo Schwarz <mail@leoschwarz.com>"]
 license = "Apache-2.0"
 
 [dependencies]
-reqwest = "0.6.1"
+#reqwest = "0.6.1"
+reqwest = { git = "https://github.com/leoschwarz/reqwest", branch = "git-hyper" }
 serde = "1.0.6"
 serde_derive = "1.0.6"
 serde_json = "1.0.2"
